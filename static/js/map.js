@@ -102,3 +102,15 @@ function MapPicker(id, inputs) {
   };
   return map;
 }
+
+/* Vehicle marker: coloured pill with the registration number */
+function carIcon(label, color) {
+  const safe = String(label).replace(/[&<>"']/g, "");
+  return L.divIcon({
+    className: "",
+    html: `<div style="transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+      background:${color};color:#fff;font:600 11px/1 system-ui,sans-serif;padding:4px 7px;border-radius:9999px;
+      border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">🚐 ${safe}</div>`,
+    iconSize: [0, 0], iconAnchor: [0, 0], popupAnchor: [0, -12],
+  });
+}

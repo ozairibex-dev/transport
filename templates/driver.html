@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% set realtime = duty is not none %}
+{% block title %}My duty{% endblock %}
+{% block content %}
+<div class="max-w-lg mx-auto space-y-4">
+  <div>
+    <h1 class="text-2xl font-semibold">Hello, {{ current_user.name }}</h1>
+    <p class="text-slate-500">{{ current_user.vendor.name if current_user.vendor else "" }}</p>
+  </div>
+
+{% if not duty %}
+  {# ---------------- Off duty: choose vehicle and start ---------------- #}
+  <form method="post" action="{{ url_for('driver.start') }}" class="bg-white rounded-xl shadow p-5 space-y-4">
+    <h2 class="font-semibold">Start duty</h2>
+    {% if vehicles %}
+      <label class="block text-sm">Vehicle <span class="text-red-500">*</span>
+        <select name="vehicle_id" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 bg-white text-base">
+          {% for v in vehicles %}<option value="{{ v.id }}">{{ v.reg_no }}{% if v.model %} · {{ v.model }}{% endif %} ({{ v.seats }} seats)</option>{% endfor %}
+        </select>
+      </label>
+      <label class="block text-sm">Serving site <span class="text-slate-400">(optional)</span>
+        <select name="site_id" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 bg-white text-base">
+          <option value="">- any / not sure -</option>
+          {% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-4 text-lg font-semibold">Start duty & share location</button>
+      <p class="text-xs text-slate-400">Your phone will ask for location permission. Keep this page open while on duty.</p>
+    {% else %}
+      <p class="text-sm text-slate-500">No vehicle is available right now. Ask your vendor to add one, or the vehicle may already be on duty with another driver.</p>
+    {% endif %}
+  </form>
+
+{% else %}
+  {# ---------------- On duty: share GPS ---------------- #}
+  <div class="bg-white rounded-xl shadow p-5 space-y-3">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-xl font-bold">{{ duty.vehicle.reg_no }}</div>
+        <div class="text-sm text-slate-500">{{ duty.vehicle.model or "" }}{% if duty.site %} · {{ duty.site.name }}{% endif %}</div>
+      </div>
+      <span id="gps-pill" class="px-3 py-1 rounded-full text-sm font-medium bg-slate-200 text-slate-600">Starting…</span>
+    </div>
+    <div class="grid grid-cols-3 gap-2 text-center text-sm">
+      <div class="bg-slate-50 rounded-lg p-2"><div id="st-speed" class="font-semibold">-</div><div class="text-xs text-slate-400">km/h</div></div>
+      <div class="bg-slate-50 rounded-lg p-2"><div id="st-acc" class="font-semibold">-</div><div class="text-xs text-slate-400">accuracy (m)</div></div>
+      <div class="bg-slate-50 rounded-lg p-2"><div id="st-sent" class="font-semibold">-</div><div class="text-xs text-slate-400">last sent</div></div>
+    </div>
+    <div id="gps-warn" class="hidden rounded-lg bg-amber-50 text-amber-800 px-3 py-2 text-sm"></div>
+  </div>
+
+  <div id="map" class="h-72 rounded-xl shadow"></div>
+
+  <form method="post" action="{{ url_for('driver.end') }}" onsubmit="return confirm('End duty and stop sharing location?')">
+    <button class="w-full rounded-xl bg-red-600 hover:bg-red-700 text-white py-4 text-lg font-semibold">End duty</button>
+  </form>
+  <p class="text-xs text-slate-400 text-center">Keep this screen open. Location sharing pauses if the browser is closed or the phone locks.</p>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if duty %}
+<script>
+(() => {
+  const SEND_EVERY = 5000, HEARTBEAT = 30000;
+  const pill = document.getElementById("gps-pill"), warn = document.getElementById("gps-warn");
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  const status = (text, cls) => { pill.textContent = text; pill.className = "px-3 py-1 rounded-full text-sm font-medium " + cls; };
+  const warning = msg => { warn.textContent = msg; warn.classList.toggle("hidden", !msg); };
+
+  const map = baseMap("map", null, 16);
+  let marker = null, last = null, lastSent = 0, connected = false;
+
+  const socket = io();
+  socket.on("connect", () => { connected = true; send(true); });
+  socket.on("disconnect", () => { connected = false; status("Reconnecting…", "bg-amber-100 text-amber-700"); });
+
+  function send(force) {
+    if (!last || !connected) return;
+    if (!force && Date.now() - lastSent < SEND_EVERY) return;
+    lastSent = Date.now();
+    socket.emit("loc", last, ack => {
+      if (ack && ack.ok) { status("● Live", "bg-green-100 text-green-700"); set("st-sent", new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"})); }
+      else if (ack && ack.error === "no_duty") location.reload();   // duty ended by admin/vendor
+    });
+  }
+
+  if (!window.isSecureContext) warning("Location needs HTTPS on phones. Ask IT to open the app with https://");
+  if (!navigator.geolocation) { warning("This browser can't share location."); return; }
+
+  navigator.geolocation.watchPosition(p => {
+    const c = p.coords;
+    last = { lat: c.latitude, lng: c.longitude, speed: c.speed, heading: c.heading, accuracy: c.accuracy };
+    set("st-speed", c.speed != null ? Math.round(c.speed * 3.6) : "-");
+    set("st-acc", Math.round(c.accuracy));
+    warning(c.accuracy > 100 ? "GPS signal is weak. Move to an open area if possible." : "");
+    if (!marker) { marker = L.marker([c.latitude, c.longitude], { icon: carIcon("{{ duty.vehicle.reg_no }}", "#059669") }).addTo(map); map.setView([c.latitude, c.longitude], 16); }
+    else { marker.setLatLng([c.latitude, c.longitude]); map.panTo([c.latitude, c.longitude]); }
+    send(false);
+  }, err => {
+    status("No GPS", "bg-red-100 text-red-700");
+    warning(err.code === 1 ? "Location permission denied. Allow location for this site in your browser settings, then reload."
+                           : "Can't get your location yet. Check that GPS is on.");
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+
+  // Keep "last seen" fresh while parked (watchPosition may go quiet when not moving)
+  setInterval(() => send(Date.now() - lastSent >= HEARTBEAT), 5000);
+
+  // Ask the phone to keep the screen on (supported on most Android/Chrome & iOS 16.4+)
+  let lock = null;
+  async function keepAwake() { try { lock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+  if ("wakeLock" in navigator) {
+    keepAwake();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { keepAwake(); send(true); } });
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -94,6 +94,55 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, raw)
 
 
+class Duty(db.Model):
+    """A driver's on-duty session in one vehicle. Active while ended_at is NULL.
+
+    Holds the latest position so the live map never has to scan the ping history.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    driver_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    vehicle_id = db.Column(db.Integer, db.ForeignKey("vehicle.id"), nullable=False, index=True)
+    site_id = db.Column(db.Integer, db.ForeignKey("site.id"))      # site being served (optional)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ended_at = db.Column(db.DateTime, index=True)
+
+    # latest known position
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    speed = db.Column(db.Float)       # km/h
+    heading = db.Column(db.Float)     # degrees, 0 = north
+    accuracy = db.Column(db.Float)    # metres
+    last_seen = db.Column(db.DateTime)
+    last_ping_at = db.Column(db.DateTime)   # when a LocationPing was last stored
+
+    driver = db.relationship("User")
+    vehicle = db.relationship("Vehicle")
+    site = db.relationship("Site")
+
+    # Database-level guarantee: one active duty per vehicle and per driver,
+    # even if two phones press "Start duty" at the same instant.
+    __table_args__ = (
+        db.Index("uq_active_duty_vehicle", "vehicle_id", unique=True,
+                 sqlite_where=db.text("ended_at IS NULL"), postgresql_where=db.text("ended_at IS NULL")),
+        db.Index("uq_active_duty_driver", "driver_id", unique=True,
+                 sqlite_where=db.text("ended_at IS NULL"), postgresql_where=db.text("ended_at IS NULL")),
+    )
+
+    @classmethod
+    def active(cls):
+        return cls.query.filter(cls.ended_at.is_(None))
+
+
+class LocationPing(db.Model):
+    """Position history (thinned: at most one every ~15 s or 50 m) for trails and reports."""
+    id = db.Column(db.Integer, primary_key=True)
+    duty_id = db.Column(db.Integer, db.ForeignKey("duty.id"), nullable=False, index=True)
+    lat = db.Column(db.Float, nullable=False)
+    lng = db.Column(db.Float, nullable=False)
+    speed = db.Column(db.Float)
+    at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
 class AuditLog(db.Model):
     """Who changed what, and when. Rosters/trips change constantly, so keep a trail."""
     id = db.Column(db.Integer, primary_key=True)

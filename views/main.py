@@ -2,7 +2,7 @@
 from flask import Blueprint, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
-from models import Site, User, Vehicle, Vendor
+from models import Duty, Site, User, Vehicle, Vendor
 
 bp = Blueprint("main", __name__)
 
@@ -17,9 +17,12 @@ def index():
 def dashboard():
     role = current_user.role
     stats, points = [], []
+    if role == "driver":
+        return redirect(url_for("driver.duty"))
 
     if role == "admin":
         stats = [
+            ("On duty now", Duty.active().count(), url_for("live.map")),
             ("Sites", Site.query.filter_by(active=True).count(), url_for("admin.sites")),
             ("Vendors", Vendor.query.filter_by(active=True).count(), url_for("admin.vendors")),
             ("Vehicles", Vehicle.query.filter_by(active=True).count(), url_for("admin.fleet")),
@@ -34,6 +37,8 @@ def dashboard():
     elif role == "vendor":
         v = current_user.vendor
         stats = [
+            ("On duty now", Duty.active().join(Vehicle).filter(Vehicle.vendor_id == v.id).count(),
+             url_for("live.map")),
             ("Vehicles", sum(x.active for x in v.vehicles), url_for("vendor.vehicles")),
             ("Drivers", sum(d.active for d in v.drivers), url_for("vendor.drivers")),
         ]

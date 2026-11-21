@@ -7,14 +7,16 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  {% if realtime %}<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>{% endif %}
   <style>.leaflet-container{font:inherit}</style>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-800">
 {% if current_user.is_authenticated %}
   {% set nav = {
-    "admin":  [("Dashboard","main.dashboard"),("Sites","admin.sites"),("Vendors","admin.vendors"),
+    "admin":  [("Dashboard","main.dashboard"),("Live map","live.map"),("Sites","admin.sites"),("Vendors","admin.vendors"),
                ("Employees","admin.employees"),("Fleet","admin.fleet"),("Change log","admin.audit")],
-    "vendor": [("Dashboard","main.dashboard"),("Vehicles","vendor.vehicles"),("Drivers","vendor.drivers")],
+    "vendor": [("Dashboard","main.dashboard"),("Live map","live.map"),("Vehicles","vendor.vehicles"),("Drivers","vendor.drivers")],
+    "driver": [("My duty","driver.duty")],
   }.get(current_user.role, [("Dashboard","main.dashboard")]) %}
   <header class="bg-white border-b">
     <div class="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -35,7 +37,7 @@
   </header>
 {% endif %}
 
-<main class="max-w-6xl mx-auto px-4 py-6">
+<main class="{{ main_class or 'max-w-6xl mx-auto px-4 py-6' }}">
   {% with msgs = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in msgs %}
       <div class="mb-3 rounded-lg px-4 py-2 text-sm {{ 'bg-red-50 text-red-700' if cat == 'error' else 'bg-green-50 text-green-700' }}">{{ msg }}</div>

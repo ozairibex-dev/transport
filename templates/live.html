@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% set realtime = true %}
+{% set main_class = "px-0 sm:px-4 py-0 sm:py-4 max-w-[1600px] mx-auto" %}
+{% block content %}
+<div class="grid lg:grid-cols-[1fr_360px] gap-4">
+  <div id="map" class="h-[55vh] lg:h-[calc(100vh-7rem)] sm:rounded-xl shadow"></div>
+
+  <aside class="px-4 sm:px-0 space-y-3 lg:h-[calc(100vh-7rem)] lg:overflow-y-auto">
+    <div class="flex items-center justify-between">
+      <h1 class="text-xl font-semibold">On duty <span id="count" class="text-slate-400 font-normal">(0)</span></h1>
+      <span id="conn" class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">connecting…</span>
+    </div>
+    <div class="grid {{ 'grid-cols-2' if vendors else 'grid-cols-1' }} gap-2">
+      <select id="f-site" class="rounded-lg border border-slate-300 px-2 py-2 text-sm bg-white">
+        <option value="">All sites</option>
+        {% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+        <option value="none">No site set</option>
+      </select>
+      {% if vendors %}
+      <select id="f-vendor" class="rounded-lg border border-slate-300 px-2 py-2 text-sm bg-white">
+        <option value="">All vendors</option>
+        {% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+      </select>
+      {% endif %}
+    </div>
+    <input id="f-q" placeholder="Search reg no. or driver…" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+    <div class="flex gap-3 text-xs text-slate-500">
+      <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-600"></span> live (&lt;1 min)</span>
+      <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-500"></span> delayed</span>
+      <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"></span> no signal (&gt;5 min)</span>
+    </div>
+    <ul id="list" class="space-y-2 pb-4"></ul>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const SITES = {{ sites|tojson }};
+  const fSite = document.getElementById("f-site"), fVendor = document.getElementById("f-vendor"),
+        fQ = document.getElementById("f-q"), list = document.getElementById("list"),
+        conn = document.getElementById("conn");
+  const map = baseMap("map");
+  const duties = {};      // id -> duty payload
+  const markers = {};     // id -> Leaflet marker
+  let trail = null, trailFor = null, fitted = false;
+
+  // Site markers
+  const siteLayer = SITES.filter(s => s.lat != null).map(s =>
+    L.marker([s.lat, s.lng], { icon: dot(COLORS.site) }).bindTooltip(s.name).addTo(map));
+  if (siteLayer.length) map.fitBounds(L.featureGroup(siteLayer).getBounds().pad(0.3), { maxZoom: 13 });
+
+  const ageSec = d => d.last_seen ? (Date.now() - Date.parse(d.last_seen)) / 1000 : Infinity;
+  const colorOf = d => { const a = ageSec(d); return a < 60 ? "#059669" : a < 300 ? "#f59e0b" : "#94a3b8"; };
+  const ago = d => { const a = ageSec(d); if (a === Infinity) return "waiting for GPS";
+    return a < 60 ? "just now" : a < 3600 ? `${Math.floor(a / 60)} min ago` : `${Math.floor(a / 3600)} h ago`; };
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  function visible(d) {
+    if (fSite.value === "none" ? d.site_id : (fSite.value && String(d.site_id) !== fSite.value)) return false;
+    if (fVendor && fVendor.value && String(d.vendor_id) !== fVendor.value) return false;
+    const q = fQ.value.trim().toLowerCase();
+    return !q || d.reg_no.toLowerCase().includes(q) || d.driver.toLowerCase().includes(q);
+  }
+
+  function popupHtml(d) {
+    return `<div class="text-sm space-y-0.5">
+      <div class="font-bold">${esc(d.reg_no)} <span class="font-normal text-slate-500">${esc(d.model)}</span></div>
+      <div>${esc(d.driver)}${d.driver_phone ? ` · <a href="tel:${esc(d.driver_phone)}">${esc(d.driver_phone)}</a>` : ""}</div>
+      <div class="text-slate-500">${esc(d.vendor)} · ${esc(d.site || "no site")} · ${d.seats ?? "?"} seats</div>
+      <div class="text-slate-500">${d.speed != null ? Math.round(d.speed) + " km/h · " : ""}${ago(d)}</div>
+      <div class="pt-1 flex gap-3"><a href="#" data-trail="${d.id}" class="text-indigo-600">Show trail</a>
+      <a href="#" data-end="${d.id}" class="text-red-600">End duty</a></div></div>`;
+  }
+
+  function render(d) {
+    duties[d.id] = d;
+    let m = markers[d.id];
+    if (d.lat == null) { if (m) { map.removeLayer(m); delete markers[d.id]; } }
+    else {
+      if (!m) { m = markers[d.id] = L.marker([d.lat, d.lng]).bindPopup(""); m.on("popupopen", () => m.setPopupContent(popupHtml(duties[d.id]))); }
+      m.setLatLng([d.lat, d.lng]).setIcon(carIcon(d.reg_no, colorOf(d)));
+      if (m.isPopupOpen()) m.setPopupContent(popupHtml(d));
+      if (trailFor === d.id && trail) trail.addLatLng([d.lat, d.lng]);
+    }
+    refresh();
+  }
+
+  function remove(id) {
+    if (markers[id]) map.removeLayer(markers[id]);
+    if (trailFor === id && trail) { map.removeLayer(trail); trail = trailFor = null; }
+    delete markers[id]; delete duties[id];
+    refresh();
+  }
+
+  function refresh() {
+    const shown = Object.values(duties).filter(visible).sort((a, b) => a.reg_no.localeCompare(b.reg_no));
+    Object.values(duties).forEach(d => {
+      const m = markers[d.id]; if (!m) return;
+      m.setIcon(carIcon(d.reg_no, colorOf(d)));
+      if (visible(d)) { if (!map.hasLayer(m)) m.addTo(map); } else if (map.hasLayer(m)) map.removeLayer(m);
+    });
+    document.getElementById("count").textContent = `(${shown.length})`;
+    list.innerHTML = shown.map(d => `
+      <li data-id="${d.id}" class="bg-white rounded-xl shadow px-3 py-2 cursor-pointer hover:ring-2 ring-indigo-200 flex items-start gap-3">
+        <span class="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0" style="background:${colorOf(d)}"></span>
+        <div class="min-w-0 flex-1">
+          <div class="flex justify-between gap-2"><span class="font-semibold">${esc(d.reg_no)}</span>
+            <span class="text-xs text-slate-400 whitespace-nowrap">${ago(d)}</span></div>
+          <div class="text-sm text-slate-600 truncate">${esc(d.driver)} · ${esc(d.vendor)}</div>
+          <div class="text-xs text-slate-400">${esc(d.site || "no site")}${d.speed != null ? " · " + Math.round(d.speed) + " km/h" : ""}</div>
+        </div>
+      </li>`).join("") || '<li class="text-sm text-slate-400 py-6 text-center">No vehicles on duty.</li>';
+    if (!fitted) {
+      const pts = shown.filter(d => d.lat != null).map(d => [d.lat, d.lng]);
+      if (pts.length) { map.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 15 }); fitted = true; }
+    }
+  }
+
+  list.addEventListener("click", e => {
+    const li = e.target.closest("li[data-id]"); if (!li) return;
+    const m = markers[li.dataset.id];
+    if (m) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 15)); m.openPopup(); }
+    if (window.innerWidth < 1024) document.getElementById("map").scrollIntoView({ behavior: "smooth" });
+  });
+
+  map.on("popupopen", e => {
+    const el = e.popup.getElement();
+    el.addEventListener("click", async ev => {
+      const t = ev.target.closest("[data-trail],[data-end]"); if (!t) return;
+      ev.preventDefault();
+      if (t.dataset.trail) {
+        const id = +t.dataset.trail;
+        if (trail) map.removeLayer(trail);
+        const path = await (await fetch(`/live/trail/${id}?minutes=60`)).json();
+        trail = L.polyline(path, { color: "#4f46e5", weight: 4, opacity: 0.7 }).addTo(map); trailFor = id;
+        if (path.length > 1) map.fitBounds(trail.getBounds().pad(0.2));
+      } else if (confirm("End this duty? The driver's location sharing will stop.")) {
+        await fetch(`/live/duty/${t.dataset.end}/end`, { method: "POST" });
+      }
+    });
+  });
+
+  [fSite, fVendor, fQ].forEach(el => el && el.addEventListener("input", refresh));
+  setInterval(refresh, 15000);   // re-colour markers as positions age
+
+  const socket = io();
+  socket.on("connect", () => { conn.textContent = "live"; conn.className = "text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700"; });
+  socket.on("disconnect", () => { conn.textContent = "reconnecting…"; conn.className = "text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"; });
+  socket.on("fleet:snapshot", all => { Object.keys(duties).forEach(id => remove(+id)); all.forEach(render); });
+  socket.on("fleet:update", render);
+  socket.on("fleet:remove", d => remove(d.id));
+})();
+</script>
+{% endblock %}
