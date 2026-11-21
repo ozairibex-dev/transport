@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title or "Dashboard" }}{% endblock %} · Office Transport</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>.leaflet-container{font:inherit}</style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800">
+{% if current_user.is_authenticated %}
+  {% set nav = {
+    "admin":  [("Dashboard","main.dashboard"),("Sites","admin.sites"),("Vendors","admin.vendors"),
+               ("Employees","admin.employees"),("Fleet","admin.fleet"),("Change log","admin.audit")],
+    "vendor": [("Dashboard","main.dashboard"),("Vehicles","vendor.vehicles"),("Drivers","vendor.drivers")],
+  }.get(current_user.role, [("Dashboard","main.dashboard")]) %}
+  <header class="bg-white border-b">
+    <div class="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+      <a href="{{ url_for('main.dashboard') }}" class="font-bold text-indigo-600 shrink-0">Office Transport</a>
+      <nav class="order-last w-full sm:order-none sm:w-auto flex gap-1 overflow-x-auto text-sm">
+        {% for label, ep in nav %}
+          <a href="{{ url_for(ep) }}"
+             {# "admin.sites" is active for admin.sites and admin.site_form #}
+             class="px-3 py-1.5 rounded-lg whitespace-nowrap {{ 'bg-indigo-50 text-indigo-700 font-medium' if (request.endpoint or '').startswith(ep[:-1] if ep.endswith('s') else ep) else 'text-slate-600 hover:bg-slate-100' }}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+      <div class="ml-auto flex items-center gap-3 text-sm shrink-0">
+        <span class="hidden sm:inline text-slate-500">{{ current_user.name }} · <span class="capitalize">{{ current_user.role }}</span></span>
+        <a href="{{ url_for('auth.change_password') }}" class="text-slate-500 hover:text-slate-800" title="Change password">⚙</a>
+        <a href="{{ url_for('auth.logout') }}" class="text-slate-500 hover:text-slate-800">Logout</a>
+      </div>
+    </div>
+  </header>
+{% endif %}
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+      <div class="mb-3 rounded-lg px-4 py-2 text-sm {{ 'bg-red-50 text-red-700' if cat == 'error' else 'bg-green-50 text-green-700' }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<script>window.MAP_CENTER = {{ map_center|tojson }}; window.MAP_ZOOM = {{ map_zoom }};</script>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
