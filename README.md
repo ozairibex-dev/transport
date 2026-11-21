@@ -42,7 +42,37 @@ Rules agreed so far:
 
 ---
 
-## Quick start
+## Run on your laptop (one command)
+
+You need **Python 3.10+** ([python.org](https://www.python.org/downloads/); on Windows tick
+"Add python.exe to PATH") and **Git**.
+
+```bash
+git clone -b claude/exciting-meitner-9l12nm https://github.com/ozairibex-dev/transport.git
+```
+```bash
+cd transport
+```
+
+**Windows:** double-click `start.bat` (or run `start.bat demo` in Command Prompt for demo data).
+**Mac/Linux:** `./start.sh` (or `./start.sh demo`).
+
+The script creates the virtual environment, installs libraries (only when `requirements.txt` changes),
+creates the admin account and starts the app at http://localhost:5000. Run the same script every time.
+To update later: `git pull`, then run the script again.
+
+### Let phones on the road connect (free HTTPS tunnel)
+
+1. Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+2. With the app running, in a second terminal: `cloudflared tunnel --url http://localhost:5000`
+3. Open the printed `https://….trycloudflare.com` address on the phone, log in as a driver,
+   tap **Start duty** and allow location. Watch it on the admin **Live map**.
+
+The address changes each time the tunnel restarts and stops when the laptop sleeps, so this is for
+testing and demos. **Before sharing it:** change the `admin` password and don't use the demo logins.
+The session secret key is generated automatically on first run (`instance/secret_key`, not committed).
+
+## Manual setup (alternative to the start scripts)
 
 ```bash
 python -m venv .venv
@@ -103,7 +133,7 @@ that can track in the background.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SECRET_KEY` | `dev-secret-change-me` | Session signing. **Set a random value in production.** |
+| `SECRET_KEY` | auto-generated | Session signing key. If unset, a random key is created once in `instance/secret_key`. |
 | `DATABASE_URL` | `sqlite:///transport.db` | Any SQLAlchemy URL, e.g. `postgresql://user:pass@host/db` |
 | `MAP_CENTER` | `20,0` | Map start point (`lat,lng`) before any site has a location |
 | `PORT` | `5000` | Web server port |
@@ -164,7 +194,7 @@ static/js/map.js    Leaflet map, location picker, Nominatim search
   because live updates are held in memory per process):
   `pip install gunicorn && gunicorn -w 1 --threads 100 -b 0.0.0.0:5000 app:app`
 - Run behind HTTPS (e.g. nginx or Caddy with a real certificate) so phones can share GPS.
-- Set `SECRET_KEY` and change the `admin` password.
+- Change the `admin` password. Keep `instance/secret_key` (or set `SECRET_KEY`) so logins survive restarts.
 
 ---
 

@@ -2,6 +2,8 @@
 Office Pick & Drop - staff transport management.
 
 Run:
+    start.bat  (Windows)  or  ./start.sh  (Mac/Linux)    # does everything below
+    -- or by hand --
     pip install -r requirements.txt
     flask --app app seed        # creates the admin (+ demo data with --demo)
     python app.py               # http://localhost:5000
@@ -10,6 +12,7 @@ Run:
 See README.md for the full guide.
 """
 import os
+import secrets
 
 import click
 from flask import Flask
@@ -18,10 +21,23 @@ from models import Site, User, Vehicle, Vendor, db, login_manager
 from realtime import socketio
 
 
+def load_secret_key(app):
+    """SECRET_KEY from the environment, else a random key generated once and kept in instance/secret_key."""
+    if os.environ.get("SECRET_KEY"):
+        return os.environ["SECRET_KEY"]
+    path = os.path.join(app.instance_path, "secret_key")
+    if not os.path.exists(path):
+        os.makedirs(app.instance_path, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(secrets.token_hex(32))
+    with open(path) as f:
+        return f.read().strip()
+
+
 def create_app():
     app = Flask(__name__)
     app.config.update(
-        SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
+        SECRET_KEY=load_secret_key(app),
         SQLALCHEMY_DATABASE_URI=os.environ.get(
             "DATABASE_URL", "sqlite:///" + os.path.join(app.root_path, "transport.db")),
         # Map starts here when no site has coordinates yet ("lat,lng")
