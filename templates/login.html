@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="min-h-[70vh] flex items-center justify-center">
+  <form method="post" class="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4">
+    <div>
+      <h1 class="text-2xl font-bold text-indigo-600">Office Transport</h1>
+      <p class="text-sm text-slate-500">Employee, driver, vendor and admin login</p>
+    </div>
+    <label class="block text-sm">Username
+      <input name="username" required autofocus autocapitalize="none"
+             class="mt-1 w-full rounded-lg border-slate-300 border px-3 py-2 focus:outline-indigo-500">
+    </label>
+    <label class="block text-sm">Password
+      <input name="password" type="password" required
+             class="mt-1 w-full rounded-lg border-slate-300 border px-3 py-2 focus:outline-indigo-500">
+    </label>
+    <button class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white py-2 font-medium">Sign in</button>
+  </form>
+</div>
+{% endblock %}

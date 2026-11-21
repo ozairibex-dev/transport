@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{#
+  Generic table page. Views pass:
+    title, tables=[{title?, new?, columns, rows:[{cells, edit?, toggle?, active?}]}]
+  A cell may be a (text, color) tuple -> rendered as a badge.
+  Optional: site_filter=True, sites, site_id -> shows a site dropdown filter.
+#}
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+  <h1 class="text-2xl font-semibold">{{ title }}</h1>
+  <div class="flex gap-2 items-center">
+    {% if site_filter %}
+    <form method="get">
+      <select name="site" onchange="this.form.submit()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
+        <option value="">All sites</option>
+        {% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if s.id == site_id }}>{{ s.name }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    {% if tables|length == 1 and tables[0].new %}
+      <a href="{{ tables[0].new }}" class="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-medium">+ Add</a>
+    {% endif %}
+  </div>
+</div>
+
+{% for t in tables %}
+  {% if t.title %}<h2 class="text-lg font-semibold mt-6 mb-2">{{ t.title }} <span class="text-slate-400 font-normal">({{ t.rows|length }})</span></h2>{% endif %}
+  <div class="bg-white rounded-xl shadow overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 text-slate-600 text-left">
+        <tr>
+          {% for c in t.columns %}<th class="px-4 py-2 font-medium whitespace-nowrap">{{ c }}</th>{% endfor %}
+          {% if t.rows and (t.rows[0].edit or t.rows[0].toggle) %}<th class="px-4 py-2"></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody class="divide-y">
+        {% for r in t.rows %}
+        <tr class="{{ 'text-slate-400' if r.active is defined and not r.active }}">
+          {% for cell in r.cells %}
+            <td class="px-4 py-2 align-top">
+              {% if cell is not string and cell is iterable and cell|length == 2 %}
+                <span class="px-2 py-0.5 rounded-full text-xs {{ 'bg-green-100 text-green-700' if cell[1] == 'green' else 'bg-slate-200 text-slate-600' }}">{{ cell[0] }}</span>
+              {% else %}{{ cell }}{% endif %}
+            </td>
+          {% endfor %}
+          {% if r.edit or r.toggle %}
+          <td class="px-4 py-2 text-right whitespace-nowrap">
+            {% if r.edit %}<a href="{{ r.edit }}" class="text-indigo-600 hover:underline">Edit</a>{% endif %}
+            {% if r.toggle %}
+            <form method="post" action="{{ r.toggle }}" class="inline ml-3">
+              <button class="text-slate-500 hover:underline">{{ 'Disable' if r.active else 'Enable' }}</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ t.columns|length + 1 }}" class="px-4 py-6 text-center text-slate-400">Nothing here yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endfor %}
+{% endblock %}

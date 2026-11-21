@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-1">Hello, {{ current_user.name }}</h1>
+<p class="text-slate-500 mb-6 capitalize">{{ current_user.role }}
+  {% if current_user.role in ("vendor", "driver") and current_user.vendor %} · {{ current_user.vendor.name }}{% endif %}
+  {% if current_user.role == "employee" and current_user.site %} · {{ current_user.site.name }}{% endif %}
+</p>
+
+{% if stats %}
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+  {% for label, count, link in stats %}
+  <a href="{{ link }}" class="bg-white rounded-xl shadow p-4 hover:ring-2 ring-indigo-200">
+    <div class="text-3xl font-bold">{{ count }}</div>
+    <div class="text-sm text-slate-500">{{ label }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if current_user.role == "driver" %}
+<div class="bg-white rounded-xl shadow p-5 mb-6 text-sm space-y-1">
+  <div><span class="text-slate-500">Phone:</span> {{ current_user.phone or "-" }}</div>
+  <div><span class="text-slate-500">License:</span> {{ current_user.license_no or "-" }}</div>
+</div>
+{% endif %}
+
+{% if current_user.role == "employee" and current_user.home_lat is none %}
+<div class="mb-6 rounded-lg bg-amber-50 text-amber-800 px-4 py-2 text-sm">Your home location isn't set yet. Ask the office admin to add it.</div>
+{% endif %}
+
+{% if points %}
+<div class="bg-white rounded-xl shadow p-3 mb-6">
+  <div id="map" class="h-96 rounded-lg"></div>
+  <div class="flex gap-4 text-xs text-slate-500 mt-2 px-1">
+    <span><span class="inline-block w-3 h-3 rounded-full bg-indigo-600 align-middle"></span> Site</span>
+    <span><span class="inline-block w-3 h-3 rounded-full bg-amber-500 align-middle"></span> Employee home</span>
+  </div>
+</div>
+{% endif %}
+
+<div class="rounded-xl border border-dashed p-4 text-sm text-slate-500">
+  Coming next: live vehicle tracking (Phase 2), daily rosters (Phase 3) and trip assignment from the live map (Phase 4).
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if points %}
+<script>showPoints("map", {{ points|tojson }});</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{#
+  Generic form. Views pass: title, fields (forms.Field list), values, back,
+  map_cfg={"lat": field, "lng": field, "addr": field} to show a location picker.
+#}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-semibold">{{ title }}</h1>
+  <a href="{{ back }}" class="text-sm text-slate-500 hover:underline">← Back</a>
+</div>
+
+<form method="post" autocomplete="off" class="grid gap-6 {{ 'lg:grid-cols-2' if map_cfg }}">
+  <div class="bg-white rounded-xl shadow p-5 space-y-4">
+    {% for f in fields %}
+      {% set v = values.get(f.name, "") %}
+      {% if f.type == "heading" %}
+        <h2 class="pt-2 border-t font-semibold text-slate-700">{{ f.label }}</h2>
+      {% elif f.type == "checkbox" %}
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="{{ f.name }}" {{ 'checked' if v }} class="h-4 w-4"> {{ f.label }}
+        </label>
+      {% else %}
+        <label class="block text-sm">
+          <span class="text-slate-700">{{ f.label }}{% if f.required %} <span class="text-red-500">*</span>{% endif %}</span>
+          {% if f.type == "select" %}
+            <select name="{{ f.name }}" id="f-{{ f.name }}" {{ 'required' if f.required }}
+                    class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 bg-white">
+              {% for val, lab in f.options %}
+                <option value="{{ val }}" {{ 'selected' if val|string == v|string }}>{{ lab }}</option>
+              {% endfor %}
+            </select>
+          {% elif f.type == "textarea" %}
+            <textarea name="{{ f.name }}" id="f-{{ f.name }}" rows="3"
+                      class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">{{ v }}</textarea>
+          {% else %}
+            <input name="{{ f.name }}" id="f-{{ f.name }}" value="{{ v }}"
+                   type="{{ {'int':'number','float':'number','password':'password','email':'email','tel':'tel'}.get(f.type, 'text') }}"
+                   {{ 'step=any' if f.type == 'float' }} {{ 'required' if f.required }}
+                   {{ 'autocapitalize=none' if f.name == 'username' }}
+                   class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+          {% endif %}
+          {% if f.help %}<span class="text-xs text-slate-400">{{ f.help }}</span>{% endif %}
+        </label>
+      {% endif %}
+    {% endfor %}
+    <button class="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 font-medium">Save</button>
+  </div>
+
+  {% if map_cfg %}
+  <div class="bg-white rounded-xl shadow p-5 space-y-3">
+    <div class="flex gap-2">
+      <input id="map-q" placeholder="Search address or place…" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm">
+      <button type="button" id="map-search" class="rounded-lg bg-slate-800 text-white px-3 text-sm">Search</button>
+      <button type="button" id="map-me" class="rounded-lg border px-3 text-sm" title="Use my location">📍</button>
+    </div>
+    <ul id="map-results" class="text-sm divide-y border rounded-lg hidden max-h-40 overflow-y-auto"></ul>
+    <div id="map" class="h-80 lg:h-[28rem] rounded-lg"></div>
+    <p class="text-xs text-slate-400">Click the map or drag the pin to set the exact point. © OpenStreetMap contributors</p>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}
+
+{% block scripts %}
+{% if map_cfg %}
+<script>
+  MapPicker("map", {
+    lat: document.getElementById("f-{{ map_cfg.lat }}"),
+    lng: document.getElementById("f-{{ map_cfg.lng }}"),
+    addr: document.getElementById("f-{{ map_cfg.addr }}"),
+  });
+</script>
+{% endif %}
+{% endblock %}
